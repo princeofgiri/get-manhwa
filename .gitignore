@@ -1,0 +1,19 @@
+# Downloaded manga
+Red-Storm/
+*-*-*/
+*_*dpi*/
+
+# Built output files
+*.epub
+*.pdf
+*.cbz
+
+# Log files
+*_log.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# MiMoCode
+.mimocode/
