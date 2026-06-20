@@ -70,6 +70,38 @@ Examples:
 - **E-ink Optimized** — contrast enhanced for e-ink displays
 - **Multiprocessing** — builds at full CPU speed (12 workers)
 
+## Build EPUB
+
+```bash
+python3 create_epub.py <source-dir> [options]
+```
+
+| Command | Description |
+|---|---|
+| `python3 create_epub.py ./One-Piece/` | All chapters into one EPUB |
+| `python3 create_epub.py ./One-Piece/ --start 10 --end 20` | Range of chapters |
+| `python3 create_epub.py ./One-Piece/ --by-chapter` | One EPUB per chapter |
+| `python3 create_epub.py ./One-Piece/ --by-chapter --dpi 300` | Per-chapter at 300 DPI |
+| `python3 create_epub.py ./One-Piece/ --workers 8` | Use 8 parallel workers |
+
+### EPUB Options
+
+| Flag | Description |
+|---|---|
+| `--by-chapter` | Create one EPUB per chapter in `<manga>-epub/` folder |
+| `--start N` | Start chapter number |
+| `--end N` | End chapter number |
+| `--dpi N` | Target DPI (default: 150) |
+| `--quality N` | JPG quality 1-100 (default: 95) |
+| `--workers N` | Parallel workers (default: CPU count) |
+
+### EPUB Features
+
+- **Tall Image Splitting** — long images auto-split into readable pages
+- **E-ink Optimized** — contrast enhanced, whitespace cropped
+- **Clickable Table of Contents** — chapter navigation
+- **Per-Chapter Mode** — individual EPUBs for easy transfer
+
 ## Tested With
 
 - Allwinner WAVE 7.8" e-ink color reader (1872x1404, 300 DPI)
@@ -83,11 +115,15 @@ get-manhwa/
 ├── download.py           # Parallel manga downloader (multiprocess)
 ├── build.sh              # PDF build wrapper
 ├── build_pdf.py          # PDF builder (Python, multiprocess)
+├── create_epub.py        # EPUB builder (Python, multiprocess)
 ├── Red-Storm/            # Downloaded images
 │   ├── Chapter_0/
 │   │   ├── 001.webp
 │   │   └── ...
 │   └── Chapter_461/
+├── Red-Storm-epub/       # Per-chapter EPUBs (--by-chapter)
+│   ├── Chapter_1.epub
+│   └── ...
 ├── Red-Storm_Complete.pdf
 ├── Red-Storm_150dpi.pdf
 └── Red-Storm_300dpi.pdf

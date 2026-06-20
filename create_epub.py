@@ -237,25 +237,14 @@ def parse_chapter_num(name: str) -> float:
         return 0.0
 
 
-def create_epub(source_dir: Path, output_path: Path, chapter_start: int,
-                chapter_end: int, quality: int = 95, workers: int = 4,
-                dpi: int = 150):
-    manga_name = source_dir.name
-
-    all_chapters = sorted([d for d in source_dir.iterdir()
-                           if d.is_dir() and d.name.startswith('Chapter')],
-                          key=lambda x: parse_chapter_num(x.name))
-
-    chapters = [d for d in all_chapters
-                if chapter_start <= parse_chapter_num(d.name) <= chapter_end]
-
+def build_epub_for_chapters(source_dir: Path, output_path: Path, chapters: list,
+                            manga_name: str, quality: int = 95, workers: int = 4,
+                            dpi: int = 150):
     if not chapters:
-        print(f"No chapters found in range {chapter_start}-{chapter_end}")
         return False
 
     target_w = int(7.8 * dpi)
     target_h = int(10.4 * dpi)
-    print(f"Converting {len(chapters)} chapters to EPUB ({workers} workers, {dpi} DPI = {target_w}x{target_h})...")
 
     tasks = []
     chapters_info = []
@@ -281,8 +270,6 @@ def create_epub(source_dir: Path, output_path: Path, chapter_start: int,
             done += 1
             if done % 500 == 0:
                 print(f"  Processing... {done}/{len(tasks)} images")
-
-    print(f"  Building EPUB archive...")
 
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         zf.writestr('mimetype', MIMETYPE, compress_type=zipfile.ZIP_STORED)
@@ -394,7 +381,44 @@ def create_epub(source_dir: Path, output_path: Path, chapter_start: int,
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
     total_pages = len(spine_lines)
-    print(f"✓ {output_path.name} ({total_pages} pages, {size_mb:.1f} MB)")
+    print(f"  ✓ {output_path.name} ({total_pages} pages, {size_mb:.1f} MB)")
+    return True
+
+
+def create_epub(source_dir: Path, output_path: Path, chapter_start: int,
+                chapter_end: int, quality: int = 95, workers: int = 4,
+                dpi: int = 150, by_chapter: bool = False):
+    manga_name = source_dir.name
+
+    all_chapters = sorted([d for d in source_dir.iterdir()
+                           if d.is_dir() and d.name.startswith('Chapter')],
+                          key=lambda x: parse_chapter_num(x.name))
+
+    chapters = [d for d in all_chapters
+                if chapter_start <= parse_chapter_num(d.name) <= chapter_end]
+
+    if not chapters:
+        print(f"No chapters found in range {chapter_start}-{chapter_end}")
+        return False
+
+    target_w = int(7.8 * dpi)
+    target_h = int(10.4 * dpi)
+
+    if by_chapter:
+        epub_dir = source_dir.parent / f"{manga_name}-epub"
+        epub_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Building {len(chapters)} EPUBs ({workers} workers, {dpi} DPI = {target_w}x{target_h})...")
+        for ch_dir in chapters:
+            ch_num = ch_dir.name.split('_')[-1]
+            epub_path = epub_dir / f"Chapter_{ch_num}.epub"
+            print(f"  Chapter {ch_num}...")
+            build_epub_for_chapters(source_dir, epub_path, [ch_dir], manga_name,
+                                    quality=quality, workers=workers, dpi=dpi)
+        print(f"\nDone! EPUBs saved to: {epub_dir}/")
+    else:
+        print(f"Converting {len(chapters)} chapters to EPUB ({workers} workers, {dpi} DPI = {target_w}x{target_h})...")
+        build_epub_for_chapters(source_dir, output_path, chapters, manga_name,
+                                quality=quality, workers=workers, dpi=dpi)
     return True
 
 
@@ -407,6 +431,7 @@ def main():
     parser.add_argument('--quality', type=int, default=95, help='JPG quality (1-100, default: 95)')
     parser.add_argument('--dpi', type=int, default=150, help='Target DPI for 7.8" screen (default: 150)')
     parser.add_argument('--workers', type=int, default=os.cpu_count() or 4, help='Parallel workers')
+    parser.add_argument('--by-chapter', action='store_true', help='Create one EPUB per chapter')
 
     args = parser.parse_args()
     source_dir = Path(args.source)
@@ -426,7 +451,8 @@ def main():
     output_path = Path(args.output) if args.output else output_dir / f"{range_name}.epub"
 
     create_epub(source_dir, output_path, args.start, args.end,
-                quality=args.quality, workers=args.workers, dpi=args.dpi)
+                quality=args.quality, workers=args.workers, dpi=args.dpi,
+                by_chapter=args.by_chapter)
 
 
 if __name__ == '__main__':
