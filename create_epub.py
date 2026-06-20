@@ -3,12 +3,16 @@
 
 import os
 import sys
+import csv
+import warnings
 import zipfile
 import argparse
 from pathlib import Path
 from PIL import Image, ImageEnhance
 import io
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 SPLIT_RATIO = 1.8
 TARGET_W = 1404
@@ -237,6 +241,57 @@ def parse_chapter_num(name: str) -> float:
         return 0.0
 
 
+def parse_arc_csv(csv_path: Path) -> list[dict]:
+    if not csv_path.is_file():
+        print(f"Error: CSV file not found: {csv_path}")
+        sys.exit(1)
+
+    arcs = []
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f, delimiter=';')
+        if reader.fieldnames is None:
+            print("Error: CSV file is empty")
+            sys.exit(1)
+
+        required = {'title', 'start', 'end'}
+        headers = set(h.strip() for h in reader.fieldnames)
+        missing = required - headers
+        if missing:
+            print(f"Error: CSV missing required columns: {', '.join(sorted(missing))}")
+            print(f"Found columns: {', '.join(sorted(headers))}")
+            print(f"Expected format: title;start;end;desc")
+            sys.exit(1)
+
+        for line_num, row in enumerate(reader, start=2):
+            title = row.get('title', '').strip()
+            start_str = row.get('start', '').strip()
+            end_str = row.get('end', '').strip()
+
+            if not title:
+                print(f"Error: Empty title on line {line_num}")
+                sys.exit(1)
+            if not start_str or not end_str:
+                print(f"Error: Missing start/end on line {line_num} ('{title}')")
+                sys.exit(1)
+            try:
+                start = int(start_str)
+                end = int(end_str)
+            except ValueError:
+                print(f"Error: Invalid start/end number on line {line_num} ('{title}': {start_str}-{end_str})")
+                sys.exit(1)
+            if end < start:
+                print(f"Error: end < start on line {line_num} ('{title}': {start}-{end})")
+                sys.exit(1)
+
+            arcs.append({'title': title, 'start': start, 'end': end})
+
+    if not arcs:
+        print("Error: No arcs found in CSV")
+        sys.exit(1)
+
+    return arcs
+
+
 def build_epub_for_chapters(source_dir: Path, output_path: Path, chapters: list,
                             manga_name: str, quality: int = 95, workers: int = 4,
                             dpi: int = 150):
@@ -387,26 +442,45 @@ def build_epub_for_chapters(source_dir: Path, output_path: Path, chapters: list,
 
 def create_epub(source_dir: Path, output_path: Path, chapter_start: int,
                 chapter_end: int, quality: int = 95, workers: int = 4,
-                dpi: int = 150, by_chapter: bool = False):
+                dpi: int = 150, by_chapter: bool = False,
+                by_arc: bool = False, arc_csv: Path = None):
     manga_name = source_dir.name
 
     all_chapters = sorted([d for d in source_dir.iterdir()
                            if d.is_dir() and d.name.startswith('Chapter')],
                           key=lambda x: parse_chapter_num(x.name))
 
-    chapters = [d for d in all_chapters
-                if chapter_start <= parse_chapter_num(d.name) <= chapter_end]
-
-    if not chapters:
-        print(f"No chapters found in range {chapter_start}-{chapter_end}")
-        return False
-
     target_w = int(7.8 * dpi)
     target_h = int(10.4 * dpi)
 
-    if by_chapter:
+    if by_arc:
+        arcs = parse_arc_csv(arc_csv)
         epub_dir = source_dir.parent / f"{manga_name}-epub"
         epub_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Building {len(arcs)} arc EPUBs from {arc_csv.name} ({workers} workers, {dpi} DPI = {target_w}x{target_h})...")
+        for arc in arcs:
+            arc_title = arc['title']
+            arc_start = arc['start']
+            arc_end = arc['end']
+            chapters = [d for d in all_chapters
+                        if arc_start <= parse_chapter_num(d.name) <= arc_end]
+            if not chapters:
+                print(f"  ⚠ {arc_title} (ch {arc_start}-{arc_end}): no chapters found, skipping")
+                continue
+            safe_name = arc_title.replace(' ', '_')
+            epub_path = epub_dir / f"{safe_name}.epub"
+            print(f"  {arc_title} (ch {arc_start}-{arc_end}, {len(chapters)} chapters)...")
+            build_epub_for_chapters(source_dir, epub_path, chapters, manga_name,
+                                    quality=quality, workers=workers, dpi=dpi)
+        print(f"\nDone! EPUBs saved to: {epub_dir}/")
+    elif by_chapter:
+        epub_dir = source_dir.parent / f"{manga_name}-epub"
+        epub_dir.mkdir(parents=True, exist_ok=True)
+        chapters = [d for d in all_chapters
+                    if chapter_start <= parse_chapter_num(d.name) <= chapter_end]
+        if not chapters:
+            print(f"No chapters found in range {chapter_start}-{chapter_end}")
+            return False
         print(f"Building {len(chapters)} EPUBs ({workers} workers, {dpi} DPI = {target_w}x{target_h})...")
         for ch_dir in chapters:
             ch_num = ch_dir.name.split('_')[-1]
@@ -416,6 +490,11 @@ def create_epub(source_dir: Path, output_path: Path, chapter_start: int,
                                     quality=quality, workers=workers, dpi=dpi)
         print(f"\nDone! EPUBs saved to: {epub_dir}/")
     else:
+        chapters = [d for d in all_chapters
+                    if chapter_start <= parse_chapter_num(d.name) <= chapter_end]
+        if not chapters:
+            print(f"No chapters found in range {chapter_start}-{chapter_end}")
+            return False
         print(f"Converting {len(chapters)} chapters to EPUB ({workers} workers, {dpi} DPI = {target_w}x{target_h})...")
         build_epub_for_chapters(source_dir, output_path, chapters, manga_name,
                                 quality=quality, workers=workers, dpi=dpi)
@@ -432,6 +511,8 @@ def main():
     parser.add_argument('--dpi', type=int, default=150, help='Target DPI for 7.8" screen (default: 150)')
     parser.add_argument('--workers', type=int, default=os.cpu_count() or 4, help='Parallel workers')
     parser.add_argument('--by-chapter', action='store_true', help='Create one EPUB per chapter')
+    parser.add_argument('--by-arc', action='store_true', help='Create one EPUB per arc (requires --csv)')
+    parser.add_argument('--csv', type=str, help='CSV file with arc definitions (required for --by-arc)')
 
     args = parser.parse_args()
     source_dir = Path(args.source)
@@ -443,6 +524,18 @@ def main():
     manga_name = source_dir.name
     output_dir = source_dir.parent
 
+    if args.by_arc:
+        if not args.csv:
+            print("Error: --by-arc requires --csv <path-to-csv>")
+            sys.exit(1)
+        csv_path = Path(args.csv)
+        if not csv_path.is_file():
+            print(f"Error: CSV file not found: {csv_path}")
+            sys.exit(1)
+    elif args.csv:
+        print("Error: --csv can only be used with --by-arc")
+        sys.exit(1)
+
     if args.end < args.start:
         print("Error: --end must be >= --start")
         sys.exit(1)
@@ -452,7 +545,8 @@ def main():
 
     create_epub(source_dir, output_path, args.start, args.end,
                 quality=args.quality, workers=args.workers, dpi=args.dpi,
-                by_chapter=args.by_chapter)
+                by_chapter=args.by_chapter, by_arc=args.by_arc,
+                arc_csv=Path(args.csv) if args.csv else None)
 
 
 if __name__ == '__main__':

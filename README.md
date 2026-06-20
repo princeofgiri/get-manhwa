@@ -81,6 +81,7 @@ python3 create_epub.py <source-dir> [options]
 | `python3 create_epub.py ./One-Piece/` | All chapters into one EPUB |
 | `python3 create_epub.py ./One-Piece/ --start 10 --end 20` | Range of chapters |
 | `python3 create_epub.py ./One-Piece/ --by-chapter` | One EPUB per chapter |
+| `python3 create_epub.py ./One-Piece/ --by-arc --csv arcs.csv` | One EPUB per arc |
 | `python3 create_epub.py ./One-Piece/ --by-chapter --dpi 300` | Per-chapter at 300 DPI |
 | `python3 create_epub.py ./One-Piece/ --workers 8` | Use 8 parallel workers |
 
@@ -89,11 +90,31 @@ python3 create_epub.py <source-dir> [options]
 | Flag | Description |
 |---|---|
 | `--by-chapter` | Create one EPUB per chapter in `<manga>-epub/` folder |
+| `--by-arc` | Create one EPUB per arc from CSV (requires `--csv`) |
+| `--csv <file>` | CSV file with arc definitions (required for `--by-arc`) |
 | `--start N` | Start chapter number |
 | `--end N` | End chapter number |
 | `--dpi N` | Target DPI (default: 150) |
 | `--quality N` | JPG quality 1-100 (default: 95) |
 | `--workers N` | Parallel workers (default: CPU count) |
+
+### Arc CSV Format
+
+CSV file uses `;` as delimiter with columns: `title;start;end;desc`
+
+| Column | Required | Description |
+|---|---|---|
+| `title` | Yes | Arc name (used as EPUB filename) |
+| `start` | Yes | First chapter number |
+| `end` | Yes | Last chapter number |
+| `desc` | No | Description (ignored by script) |
+
+Sample CSV:
+```csv
+title;start;end;desc
+Jura Forest Arc_1-9;1;9;Rimuru reincarnates as a slime and meets Veldora.
+Dwarf Kingdom Arc_10-17;10;17;Rimuru travels to Dwargon and meets King Gazel.
+```
 
 ### EPUB Features
 
@@ -101,6 +122,8 @@ python3 create_epub.py <source-dir> [options]
 - **E-ink Optimized** — contrast enhanced, whitespace cropped
 - **Clickable Table of Contents** — chapter navigation
 - **Per-Chapter Mode** — individual EPUBs for easy transfer
+- **Per-Arc Mode** — group chapters into story arcs via CSV
+- **Quiet Output** — deprecation warnings silenced for clean logs
 
 ## Tested With
 
